@@ -4,6 +4,9 @@ import ScholarshipList from "@/components/ScholarshipList";
 import Header from "@/components/Header";
 import { getAllJobs, getAllScholarships, getStats } from "@/lib/queries";
 
+// 동적 렌더링 강제 (매 요청마다 DB 조회)
+export const dynamic = 'force-dynamic';
+
 export default function Dashboard() {
   // DB에서 데이터 가져오기
   const jobs = getAllJobs();
