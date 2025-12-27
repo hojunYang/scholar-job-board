@@ -34,14 +34,14 @@ export default function ScholarshipList({ scholarships }: ScholarshipListProps) 
           <div className="card-header">
             <div className="card-title-section">
               <span className="badge badge-category">{scholarship.category}</span>
-              <h3 className="card-organizer">{scholarship.target_audience}</h3>
+              <h3 className="card-organizer">{scholarship.title}</h3>
             </div>
           </div>
           
           <div className="card-content">
             <div className="info-row">
-              <span className="info-label">주관기관</span>
-              <p className="info-text">{scholarship.organizer}</p>
+              <span className="info-label">대상</span>
+              <p className="info-text">{scholarship.target_audience}</p>
             </div>
             
             <div className="info-row">

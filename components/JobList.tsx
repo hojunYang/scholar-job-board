@@ -34,16 +34,15 @@ export default function JobList({ jobs }: JobListProps) {
           <div className="card-header">
             <div className="card-title-section">
               <span className="badge badge-category">{job.category}</span>
-              <h3 className="card-organizer">{job.target_audience}</h3>
+              <h3 className="card-organizer">{job.title}</h3>
             </div>
           </div>
           
           <div className="card-content">
             <div className="info-row">
-              <span className="info-label">주관기관</span>
-              <p className="info-text">{job.organizer}</p>
+              <span className="info-label">대상</span>
+              <p className="info-text">{job.target_audience}</p>
             </div>
-            
             <div className="info-row">
               <span className="info-label">혜택</span>
               <p className="info-text">{job.benefit}</p>

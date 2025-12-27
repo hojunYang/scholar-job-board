@@ -2,8 +2,6 @@ import requests
 from bs4 import BeautifulSoup
 import sqlite3
 import json
-from datetime import datetime
-import sys
 import os
 import re
 from llm import CompletionExecutor
@@ -116,10 +114,11 @@ def get_notice_detail(article_no):
         
         # 상세 내용 추출 (실제 HTML 구조에 맞게 수정 필요)
         content_div = soup.find('pre')
-        
-        if content_div:
+        title = soup.find('em', class_='ellipsis').get_text(strip=True)
+
+        if content_div and title:
             content = content_div.get_text(strip=True)
-            return content
+            return content, title
         else:
             return "상세 내용을 찾을 수 없습니다."
             
@@ -162,7 +161,7 @@ def save_to_db(notices, table_name='scholarships'):
         print(f"🆕 새 공지: {article_no} - {notice['title']}")
         
         # 상세 내용 가져오기
-        full_text = get_notice_detail(article_no)
+        full_text, title = get_notice_detail(article_no)
         
         # 제어 문자 제거 (JSON 파싱 에러 방지)
         full_text_filtered = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', full_text)
@@ -190,8 +189,8 @@ def save_to_db(notices, table_name='scholarships'):
             
             cursor.execute(f'''
                 INSERT INTO {table_name} 
-                (id, target_audience, organizer, deadline, selection_date, benefit, category, full_text)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, target_audience, organizer, deadline, selection_date, benefit, category, title, full_text)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 article_no,
                 target_audience,
@@ -200,6 +199,7 @@ def save_to_db(notices, table_name='scholarships'):
                 selection_date,
                 benefits,
                 category,
+                title,
                 full_text
             ))
             new_count += 1

@@ -7,6 +7,7 @@ export interface Job {
   selection_date: string | null;
   benefit: string;
   category: string;
+  title: string;
   full_text: string;
   created_at?: string;
   updated_at?: string;
@@ -21,6 +22,7 @@ export interface Scholarship {
   selection_date: string | null;
   benefit: string;
   category: string;
+  title: string;
   full_text: string;
   created_at?: string;
   updated_at?: string;

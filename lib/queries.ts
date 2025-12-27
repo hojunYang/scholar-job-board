@@ -4,7 +4,7 @@ import type { Job, Scholarship, Stats } from '@/types';
 // 채용 공고 리스트 조회
 export function getAllJobs(): Job[] {
   const db = getDb();
-  const jobs = db.prepare('SELECT * FROM jobs ORDER BY created_at DESC').all() as Job[];
+  const jobs = db.prepare('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 10').all() as Job[];
   return jobs;
 }
 
@@ -36,7 +36,7 @@ export function getJobById(id: number): Job | null {
 // 장학금 리스트 조회
 export function getAllScholarships(): Scholarship[] {
   const db = getDb();
-  const scholarships = db.prepare('SELECT * FROM scholarships ORDER BY created_at DESC').all() as Scholarship[];
+  const scholarships = db.prepare('SELECT * FROM scholarships ORDER BY created_at DESC LIMIT 10').all() as Scholarship[];
   return scholarships;
 }
 

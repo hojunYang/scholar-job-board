@@ -17,9 +17,9 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
         {/* 통계 카드 섹션 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-8">
           <StatsCard
             title="마감 전 장학금"
             value={stats.openScholarships.toString()}
