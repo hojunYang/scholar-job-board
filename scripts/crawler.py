@@ -235,11 +235,11 @@ def main():
     scholarship_url = "https://www.skku.edu/skku/campus/skk_comm/notice06.do"
     scholarship_notices = crawl_notices(scholarship_url, "장학금/모집")
     
-    # 2. 채용 공고 크롤링 (notice07)
+    # 2. 채용 공고 크롤링 (notice05)
     print("\n" + "=" * 60)
     print("💼 채용/취업 공고 크롤링")
     print("=" * 60)
-    job_url = "https://www.skku.edu/skku/campus/skk_comm/notice07.do"
+    job_url = "https://www.skku.edu/skku/campus/skk_comm/notice05.do"
     job_notices = crawl_notices(job_url, "채용/취업")
     
     # 결과 출력
