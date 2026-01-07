@@ -114,6 +114,8 @@ def get_notice_detail(article_no):
         
         # 상세 내용 추출 (실제 HTML 구조에 맞게 수정 필요)
         content_div = soup.find('pre')
+        if not content_div:
+            content_div = soup.find('div', class_='fr-view')
         title = soup.find('em', class_='ellipsis').get_text(strip=True)
 
         if content_div and title:
