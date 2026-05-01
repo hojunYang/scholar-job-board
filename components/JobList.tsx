@@ -33,7 +33,14 @@ export default function JobList({ jobs }: JobListProps) {
         <Link key={job.id} href={`/jobs/${job.id}`} className="card">
           <div className="card-header">
             <div className="card-title-section">
-              <span className="badge badge-category">{job.category}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="badge badge-category">{job.category}</span>
+                {job.attachmentCount ? (
+                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                    첨부 {job.attachmentCount}개
+                  </span>
+                ) : null}
+              </div>
               <h3 className="card-organizer">{job.title}</h3>
             </div>
           </div>

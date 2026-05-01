@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getScholarshipById } from '@/lib/queries';
+import AttachmentList from '@/components/AttachmentList';
 
 // 동적 렌더링 강제
 export const dynamic = 'force-dynamic';
@@ -60,11 +61,33 @@ export default async function ScholarshipDetailPage({ params }: PageProps) {
 
         <div className="bg-white rounded-lg shadow-md p-8">
           <div className="mb-6">
-            <span className="badge badge-category">{scholarship.category}</span>
-            <h1 className="text-3xl font-bold text-gray-900 mt-4">{scholarship.organizer}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="badge badge-category">{scholarship.category}</span>
+              {scholarship.attachmentCount ? (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                  첨부 {scholarship.attachmentCount}개
+                </span>
+              ) : null}
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mt-4">{scholarship.title}</h1>
+            <p className="mt-2 text-sm text-gray-500">주관: {scholarship.organizer}</p>
+            {scholarship.sourceUrl && (
+              <a
+                href={scholarship.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+              >
+                원문 공지 보기
+              </a>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 p-6 bg-gray-50 rounded-lg">
+          <div className="grid grid-cols-1 gap-6 mb-8 p-6 bg-gray-50 rounded-lg md:grid-cols-2">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-500 mb-2">주관</h3>
+              <p className="text-gray-900">{scholarship.organizer}</p>
+            </div>
             <div>
               <h3 className="text-sm font-semibold text-gray-500 mb-2">대상</h3>
               <p className="text-gray-900">{scholarship.target_audience}</p>
@@ -85,6 +108,11 @@ export default async function ScholarshipDetailPage({ params }: PageProps) {
             )}
           </div>
 
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">첨부파일</h2>
+            <AttachmentList attachments={scholarship.attachments} />
+          </div>
+
           <div className="prose max-w-none">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">상세 내용</h2>
             <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
@@ -96,4 +124,3 @@ export default async function ScholarshipDetailPage({ params }: PageProps) {
     </div>
   );
 }
-

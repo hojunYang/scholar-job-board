@@ -1,5 +1,19 @@
+export interface NoticeAttachment {
+  id: number;
+  originalFilename: string;
+  mimeType: string | null;
+  fileSize: number | null;
+  downloadPath: string;
+}
+
+interface NoticeMetadata {
+  sourceUrl?: string | null;
+  attachmentCount?: number;
+  attachments?: NoticeAttachment[];
+}
+
 // 채용 공고 인터페이스
-export interface Job {
+export interface Job extends NoticeMetadata {
   id: number;
   target_audience: string;
   organizer: string;
@@ -14,7 +28,7 @@ export interface Job {
 }
 
 // 장학금 인터페이스
-export interface Scholarship {
+export interface Scholarship extends NoticeMetadata {
   id: number;
   target_audience: string;
   organizer: string;
@@ -48,4 +62,3 @@ export interface Stats {
   openScholarships: number;        // 마감 전 전체 장학금
   closingSoonScholarships: number; // 마감 직전(D-7) 장학금
 }
-

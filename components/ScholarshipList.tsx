@@ -33,7 +33,14 @@ export default function ScholarshipList({ scholarships }: ScholarshipListProps) 
         <Link key={scholarship.id} href={`/scholarships/${scholarship.id}`} className="card">
           <div className="card-header">
             <div className="card-title-section">
-              <span className="badge badge-category">{scholarship.category}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="badge badge-category">{scholarship.category}</span>
+                {scholarship.attachmentCount ? (
+                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                    첨부 {scholarship.attachmentCount}개
+                  </span>
+                ) : null}
+              </div>
               <h3 className="card-organizer">{scholarship.title}</h3>
             </div>
           </div>

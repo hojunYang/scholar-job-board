@@ -53,6 +53,36 @@ function initializeDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notice_sources (
+      notice_type TEXT NOT NULL,
+      notice_id INTEGER NOT NULL,
+      source_url TEXT NOT NULL,
+      source_title TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (notice_type, notice_id)
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notice_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      notice_type TEXT NOT NULL,
+      notice_id INTEGER NOT NULL,
+      source_attach_no INTEGER NOT NULL,
+      original_filename TEXT NOT NULL,
+      download_url TEXT NOT NULL,
+      storage_path TEXT NOT NULL,
+      mime_type TEXT,
+      file_size INTEGER,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (notice_type, notice_id, source_attach_no)
+    )
+  `);
 }
 
 // DB 연결 종료
@@ -62,4 +92,3 @@ export function closeDb() {
     db = null;
   }
 }
-
