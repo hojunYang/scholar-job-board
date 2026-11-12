@@ -7,26 +7,27 @@
     "build": "next build",
     "start": "next start",
     "start:30001": "next start -p 30001",
-    "lint": "next lint"
+    "lint": "eslint ."
   },
   "dependencies": {
-    "better-sqlite3": "^11.8.1",
-    "next": "^15.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "better-sqlite3": "^13.1.1",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.2.0",
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.10.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "autoprefixer": "^10.4.20",
-    "eslint": "^9.17.0",
-    "eslint-config-next": "^15.1.0",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2"
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.6",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^6.0.3"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.1.1": true
   }
 }
-

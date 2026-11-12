@@ -5,7 +5,7 @@ import { categoryStyles, deadlineInfo, noticeHref, shortText } from '@/lib/notic
 
 export default function NoticeCard({ notice, source }: { notice: Job; source?: string }) {
   const meta = categoryStyles[notice.main_category || ''] || { label: '미분류', icon: 'file', tone: 'gray' };
-  const deadline = deadlineInfo(notice.deadline, Date.now(), notice.title, notice.classification_status);
+  const deadline = deadlineInfo(notice.deadline, undefined, notice.title, notice.classification_status);
   return (
     <Link href={noticeHref(notice) + (source ? `?${new URLSearchParams({source})}` : '')} className="opportunity-card">
       <div className="card-topline"><span className={`category-badge tone-${meta.tone}`}><Icon name={meta.icon} size={14}/>{meta.label}</span><span className={`deadline-badge deadline-${deadline.state}`}>{deadline.state === 'soon' && <span className="small-dot"/>}{deadline.label}</span></div>

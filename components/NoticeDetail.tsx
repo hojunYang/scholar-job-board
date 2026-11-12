@@ -9,7 +9,7 @@ import { categoryStyles, deadlineInfo, shortText } from '@/lib/notice-ui';
 export default function NoticeDetail({ notice, sourceId }: { notice: Job; sourceId?: string }) {
   const category = notice.main_category || undefined;
   const meta = categoryStyles[category || ''] || { label: '미분류', icon: 'file', tone: 'gray' };
-  const deadline = deadlineInfo(notice.deadline, Date.now(), notice.title, notice.classification_status);
+  const deadline = deadlineInfo(notice.deadline, undefined, notice.title, notice.classification_status);
   let conditions: Partial<Conditions> = {};
   try { conditions = JSON.parse(notice.eligibility_conditions || '{}') || {}; } catch { /* Old notices may lack extracted conditions. */ }
   const evidence = Array.isArray(conditions.evidence) ? conditions.evidence.filter(item => typeof item === 'string') : [];
