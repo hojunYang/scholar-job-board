@@ -6,7 +6,32 @@ export interface NoticeAttachment {
   downloadPath: string;
 }
 
+export interface EligibilityConditions {
+  applicant_type: string[];
+  education: string[];
+  enrollment: string[];
+  grade: string[];
+  major: string[];
+  gpa: string[];
+  income: string[];
+  residence: string[];
+  restrictions: string[];
+  preferences: string[];
+  evidence: string[];
+  status: 'extracted' | 'not_stated';
+}
+
 interface NoticeMetadata {
+  sourceLabels?: string | null;
+  origins?: {boardId: string; name: string; url: string; publishedAt: string | null}[];
+  eligibilityMatch?: 'matched' | 'unknown' | null;
+  normalizedEligibility?: Record<string, unknown>;
+  main_category: string | null;
+  subcategory: string | null;
+  eligibility_conditions: string | null;
+  classification_status: 'pending' | 'auto' | 'reviewed' | 'needs_review';
+  classification_reason: string | null;
+  notice_type?: 'job' | 'scholarship';
   sourceUrl?: string | null;
   attachmentCount?: number;
   attachments?: NoticeAttachment[];

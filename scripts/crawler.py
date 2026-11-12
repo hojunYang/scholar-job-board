@@ -1,14 +1,21 @@
+import argparse
+import time
+from pathlib import Path
 import json
 import os
 import re
 import sqlite3
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse, urlencode, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 from llm import CompletionExecutor
+from classification import classification_fields
+from notice_schema import ensure_notice_schema
+from eligibility import extract_profile, save_profile
+from sources import load_sources, register_sources, find_origin, save_origin, next_notice_id
 
 # .env 파일 로드
 load_dotenv()
@@ -55,9 +62,12 @@ def ensure_support_tables(conn):
 
 def get_db_connection():
     """데이터베이스 연결"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     ensure_support_tables(conn)
+    with conn:
+        ensure_notice_schema(conn)
+        register_sources(conn, load_sources())
     return conn
 
 
@@ -76,10 +86,21 @@ def get_latest_article_no(table_name):
 def extract_article_no(url_or_href):
     """URL 또는 href에서 articleNo 추출"""
     parsed = urlparse(url_or_href)
-    article_no = parse_qs(parsed.query).get('articleNo', [None])[0]
+    query = parse_qs(parsed.query)
+    if query.get('wr_id', [''])[0].isdigit():
+        return f"gnu:{query.get('bo_table',[''])[0]}:{query['wr_id'][0]}"
+    if query.get('tbl') and query.get('num', [''])[0].isdigit():
+        return f"legacy:{query['tbl'][0]}:{query['num'][0]}"
+    route = re.fullmatch(r'/board/notice/(\d+)/?', parsed.path)
+    if route:return f'route:notice:{route[1]}'
+    article_no = query.get('articleNo', [None])[0]
 
     if not article_no:
-        return None
+        item_id = parse_qs(parsed.query).get('itemId', [None])[0]
+        board_id = parse_qs(parsed.query).get('viewBoardId', [''])[0]
+        # This CMS appends a changing six-letter token to the stable 32-hex document ID.
+        stable = re.fullmatch(r'([0-9A-Fa-f]{32})[A-Z]{6}', item_id or '')
+        return f'{board_id}:{stable.group(1) if stable else item_id}' if item_id else None
 
     try:
         return int(article_no)
@@ -93,7 +114,7 @@ def extract_attach_no(download_url):
     attach_no = parse_qs(parsed.query).get('attachNo', [None])[0]
 
     if not attach_no:
-        return None
+        return parse_qs(parsed.query).get('fileId', [None])[0] or parse_qs(parsed.query).get('no', [None])[0]
 
     try:
         return int(attach_no)
@@ -101,64 +122,70 @@ def extract_attach_no(download_url):
         return None
 
 
-def crawl_notices(url, notice_type="장학금"):
-    """성균관대 공지사항 크롤링"""
-    print(f"🔍 크롤링 시작 ({notice_type}): {url}")
+def fetch_page(url):
+    for attempt in range(3):
+        try:
+            response = requests.get(url, headers=REQUEST_HEADERS, timeout=(10, 30))
+            response.raise_for_status()
+            response.encoding = 'utf-8'
+            return response
+        except (requests.Timeout, requests.ConnectionError, requests.HTTPError):
+            if attempt == 2: raise
+            time.sleep(attempt + 1)
 
-    try:
-        response = requests.get(url, headers=REQUEST_HEADERS)
-        response.raise_for_status()
-        response.encoding = 'utf-8'
 
-        soup = BeautifulSoup(response.text, 'html.parser')
-        content_wraps = soup.find_all('dl', class_='board-list-content-wrap', limit=10)
+def parse_notice_list(html, base_url):
+    soup = BeautifulSoup(html, 'html.parser')
+    wraps = soup.select('dl.board-list-content-wrap, dl.board-thumb-content-wrap, .b-list-box > li, .bo_lst > li, .bo_tit, table tr')
+    wraps += soup.select('a[href^="/board/notice/"]')
+    notices, seen = [], set()
+    for wrap in wraps:
+        link = next((a for a in ([wrap] if wrap.name=='a' else wrap.select('a[href]')) if extract_article_no(a['href']) is not None
+                     and (parse_qs(urlparse(a['href']).query).get('mode', [''])[0].lower() == 'view' or parse_qs(urlparse(a['href']).query).get('wr_id') or re.fullmatch(r'/board/notice/\d+/?',urlparse(a['href']).path))), None)
+        if not link: continue
+        article_no = extract_article_no(link['href'])
+        if article_no in seen: continue
+        seen.add(article_no)
+        date = re.search(r'20[0-9]{2}[-.]\s*[01][0-9][-.]\s*[0-3][0-9]', wrap.get_text(' ', strip=True))
+        heading=link.select_one('.bo_info h2, .leading-snug') or link
+        for badge in heading.select('.category.notice'):badge.decompose()
+        notices.append(dict(article_no=article_no, title=heading.get_text(' ', strip=True),
+                            url=urljoin(base_url, link['href']),
+                            published_at=re.sub(r'\s+', '', date.group()).replace('.', '-') if date else None))
+    empty = soup.find(string=re.compile(r'^\s*등록된 (?:글|게시물)이 없습니다\.?\s*$'))
+    empty_list = bool(empty and soup.title and '게시판목록' in soup.title.get_text())
+    if not notices and not empty_list and not soup.select_one('.b-no-post, .board-no-data, .no-data'):
+        raise ValueError(f'공지 목록 구조를 확인할 수 없습니다: {base_url}')
+    return notices
 
-        if not content_wraps:
-            print("❌ board-list-content-wrap을 찾을 수 없습니다.")
-            return []
 
-        print(f"📋 {len(content_wraps)}개의 공지사항 항목을 찾았습니다.")
-
-        notices = []
-        seen_ids = set()
-
-        for wrap in content_wraps:
-            link = wrap.find('a', href=True)
-            if not link:
-                continue
-
-            href = link.get('href', '')
-            article_no = extract_article_no(href)
-            if article_no is None:
-                continue
-
-            if article_no in seen_ids:
-                print(f"⚠️  크롤링 중복 발견: {article_no}")
-                continue
-
-            seen_ids.add(article_no)
-            detail_url = urljoin(response.url, href)
-            title = link.get_text(' ', strip=True)
-
-            notices.append({
-                'article_no': article_no,
-                'title': title,
-                'url': detail_url,
-            })
-
-        print(f"✅ {len(notices)}개의 공지사항을 찾았습니다.")
-        return notices
-
-    except Exception as e:
-        print(f"❌ 크롤링 오류: {e}")
-        return []
+def crawl_notices(url, notice_type="공지", pages=1, delay=0.5):
+    print(f"크롤링 ({notice_type}): {url}, {pages}페이지")
+    notices, seen = [], set()
+    for page in range(pages):
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+        if 'bo_table' in query or 'tbl' in query or parsed.path.rstrip('/')=='/board/notice':
+            query.update({'page':[str(page+1)]})
+        else:
+            query.update({'article.offset': [str(page * 10)], 'articleLimit': ['10']})
+        page_url = urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+        response = fetch_page(page_url)
+        rows = parse_notice_list(response.text, response.url)
+        added = [row for row in rows if row['article_no'] not in seen]
+        notices.extend(added)
+        seen.update(row['article_no'] for row in added)
+        if not added: break
+        if page + 1 < pages: time.sleep(delay)
+    print(f"수집 목록: {len(notices)}개 (고정 공지 포함)")
+    return notices
 
 
 def parse_notice_attachments(soup, base_url):
     """공지사항 첨부파일 메타데이터 추출"""
     attachments = []
 
-    for index, link in enumerate(soup.select('ul.filedown_list a[href]'), start=1):
+    for index, link in enumerate(soup.select('ul.filedown_list a[href], .b-file-box a[href], .board-view-file-wrap a[href], #bo_v_file a[href*="download"], .bo_file a[href*="download"]'), start=1):
         download_url = urljoin(base_url, link.get('href', ''))
         attach_no = extract_attach_no(download_url)
         filename = link.get_text(' ', strip=True)
@@ -176,46 +203,33 @@ def parse_notice_attachments(soup, base_url):
     return attachments
 
 
+def parse_notice_detail(html, source_url):
+    soup = BeautifulSoup(html, 'html.parser')
+    content_node = soup.select_one('.board-view-content-wrap .fr-view, .board-view-content-wrap pre, .b-content-box, .fr-view, pre, .board-view-content-wrap, #bo_v_con, #hwpEditorBoardContent, #DivContents, .board-body')
+    title_node = soup.select_one('.board-view-title-wrap h4, em.ellipsis, .b-title-box, #bo_v_title .bo_v_tit, #bo_v_title, #bo_view .tite_group h1, .conbody table strong, article header h1')
+    if content_node is None or title_node is None:
+        raise ValueError(f'공지 상세 구조를 확인할 수 없습니다: {source_url}')
+    # The category badge is metadata rather than part of the actual notice title.
+    for badge in title_node.select('span'):
+        if 'c-board-view-category' in badge.get('class',[]) or re.fullmatch(r'\[[^\]]+\]',badge.get_text(' ',strip=True)):
+            badge.decompose()
+    for element in content_node.select('script, style'): element.decompose()
+    text = content_node.get_text('\n', strip=True)
+    images = [urljoin(source_url, image['src']) for image in content_node.select('img[src]')]
+    if re.fullmatch(r'/board/notice/\d+/?',urlparse(source_url).path):
+        article=content_node.find_parent('article')
+        if article:images.extend(urljoin(source_url,n['src']) for n in article.select(':scope > img[src]'))
+    if not text and images:
+        text = '[이미지 공지: 대상·일정은 원문 이미지 확인]'
+    if not text:
+        raise ValueError(f'공지 본문이 비어 있습니다: {source_url}')
+    return dict(full_text=text, title=title_node.get_text(' ', strip=True),
+                attachments=parse_notice_attachments(soup, source_url), source_url=source_url, has_images=bool(images))
+
+
 def get_notice_detail(source_url):
-    """공지사항 상세 내용과 첨부 메타데이터 가져오기"""
-    try:
-        response = requests.get(source_url, headers=REQUEST_HEADERS)
-        response.raise_for_status()
-        response.encoding = 'utf-8'
-
-        soup = BeautifulSoup(response.text, 'html.parser')
-        content_node = soup.find('pre')
-        if not content_node:
-            content_node = soup.find('div', class_='fr-view')
-
-        title_node = soup.find('em', class_='ellipsis')
-        attachments = parse_notice_attachments(soup, response.url)
-
-        if content_node:
-            if content_node.name == 'pre':
-                content = content_node.get_text(strip=True)
-            else:
-                content = content_node.get_text('\n', strip=True)
-        else:
-            content = "상세 내용을 찾을 수 없습니다."
-
-        title = title_node.get_text(strip=True) if title_node else source_url
-
-        return {
-            'full_text': content,
-            'title': title,
-            'attachments': attachments,
-            'source_url': source_url,
-        }
-
-    except Exception as e:
-        print(f"❌ 상세 내용 가져오기 오류 ({source_url}): {e}")
-        return {
-            'full_text': "",
-            'title': source_url,
-            'attachments': [],
-            'source_url': source_url,
-        }
+    response = fetch_page(source_url)
+    return parse_notice_detail(response.text, response.url)
 
 
 def sanitize_filename(filename):
@@ -227,7 +241,7 @@ def sanitize_filename(filename):
 
 def download_attachment(notice_type, article_no, attachment):
     """첨부파일 다운로드 후 저장 경로 반환"""
-    response = requests.get(attachment['download_url'], headers=REQUEST_HEADERS)
+    response = requests.get(attachment['download_url'], headers=REQUEST_HEADERS, timeout=(10, 60))
     response.raise_for_status()
 
     notice_dir = os.path.join(ATTACHMENTS_ROOT, notice_type, str(article_no))
@@ -329,14 +343,30 @@ def save_notice_attachments(cursor, notice_type, article_no, attachments):
             upsert_notice_attachment(cursor, notice_type, article_no, attachment_record)
             print(f"📎 첨부 저장 완료: {attachment['original_filename']}")
         except Exception as e:
-            print(f"⚠️  첨부 저장 실패 ({attachment['original_filename']}): {e}")
+            upsert_notice_attachment(cursor, notice_type, article_no, {**attachment, 'storage_path':'', 'mime_type':None, 'file_size':None})
+            print(f"첨부 다운로드 실패, 원문 링크 보존 ({attachment['original_filename']}): {e}")
 
 
-def save_to_db(notices, table_name='scholarships', notice_type='scholarship'):
+def find_exact_duplicate(conn, detail):
+    # Poster images can contain different requirements even when their surrounding text is identical.
+    if detail.get('has_images'): return None
+    candidates=conn.execute('SELECT id,notice_type FROM notices WHERE title=? AND full_text=?',
+                            (detail['title'],detail['full_text'])).fetchall()
+    incoming_files=sorted(a['original_filename'] for a in detail['attachments'])
+    for candidate in candidates:
+        stored_files=sorted(row[0] for row in conn.execute('SELECT original_filename FROM notice_attachments WHERE notice_id=? AND notice_type=?',
+                                                         (candidate['id'],candidate['notice_type'])))
+        if incoming_files==stored_files:return candidate
+    return None
+
+
+def save_to_db(notices, table_name='scholarships', notice_type='scholarship', board=None, max_new=None, download_files=True):
     """DB에 저장 (중복 체크)"""
+    if table_name not in ('jobs', 'scholarships'):
+        raise ValueError('Unknown notice table')
     if not notices:
         print("저장할 공지사항이 없습니다.")
-        return
+        return 0
 
     host = os.getenv('CLOVA_STUDIO_HOST')
     api_key = os.getenv('CLOVA_STUDIO_API_KEY')
@@ -354,23 +384,38 @@ def save_to_db(notices, table_name='scholarships', notice_type='scholarship'):
     print(f"📊 DB 최신 ID: {latest_id}")
 
     new_count = 0
+    errors = 0
 
     for notice in notices:
         article_no = notice['article_no']
 
-        if article_no <= latest_id:
-            print(f"⏭️  건너뛰기 (기존 데이터): {article_no} - {notice['title']}")
-            continue
+        if max_new is not None and new_count >= max_new: break
+        if board:
+            origin = find_origin(conn, board, article_no)
+            if origin:
+                with conn: save_origin(conn, board, notice, origin['notice_id'], origin['notice_type'])
+                continue
+        if not board or board.get('legacy_ids'):
+            existing = conn.execute('SELECT id,notice_type FROM notices WHERE id=?', (article_no,)).fetchone() if board else None
+            if existing:
+                with conn: save_origin(conn, board, notice, existing['id'], existing['notice_type'])
+                continue
+            if not board and cursor.execute(f'SELECT 1 FROM {table_name} WHERE id=?', (article_no,)).fetchone():
+                continue
 
-        print(f"🆕 새 공지: {article_no} - {notice['title']}")
-        detail = get_notice_detail(notice['url'])
-        full_text = detail['full_text']
-        title = detail['title']
-
-        full_text_filtered = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', full_text)
-
+        print(f"새 공지 [{board['id'] if board else notice_type}:{article_no}]: {notice['title']}")
         try:
-            result = completion_executor.execute(full_text_filtered)
+            detail = notice.get('detail') or get_notice_detail(notice['url'])
+            full_text = detail['full_text']
+            title = detail['title']
+            if not full_text.strip(): raise ValueError('Empty notice body; retry next run')
+            full_text_filtered = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', full_text)
+            if board:
+                duplicate = find_exact_duplicate(conn, detail)
+                if duplicate:
+                    with conn: save_origin(conn, board, notice, duplicate['id'], duplicate['notice_type'])
+                    continue
+            result = completion_executor.execute(title + '\n' + full_text_filtered)
 
             target_audience = result.get('target_audience') or "공지사항 참조"
             if isinstance(target_audience, list):
@@ -385,15 +430,31 @@ def save_to_db(notices, table_name='scholarships', notice_type='scholarship'):
                 benefits = '\n'.join(f"- {item}" for item in benefits)
 
             category = result.get('category') or "기타"
+            fields = classification_fields(title, full_text, target_audience, benefits, category, result)
 
+            # Allocate IDs under the writer lock when importing several boards concurrently.
+            conn.execute('BEGIN IMMEDIATE')
+            if board:
+                existing = find_origin(conn, board, article_no)
+                if not existing and board.get('legacy_ids'):
+                    existing = conn.execute('SELECT id AS notice_id,notice_type FROM notices WHERE id=?', (article_no,)).fetchone()
+                duplicate = find_exact_duplicate(conn, detail) if not existing else None
+                if existing or duplicate:
+                    notice_id = existing['notice_id'] if existing else duplicate['id']
+                    kind = existing['notice_type'] if existing else duplicate['notice_type']
+                    save_origin(conn, board, notice, notice_id, kind)
+                    conn.commit()
+                    continue
+            stored_id = article_no if not board or board.get('legacy_ids') else next_notice_id(conn)
             cursor.execute(
                 f'''
                 INSERT INTO {table_name}
-                (id, target_audience, organizer, deadline, selection_date, benefit, category, title, full_text)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, target_audience, organizer, deadline, selection_date, benefit, category, title, full_text,
+                 main_category, subcategory, eligibility_conditions, classification_status, classification_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
-                    article_no,
+                    stored_id,
                     target_audience,
                     organizer,
                     deadline,
@@ -401,87 +462,77 @@ def save_to_db(notices, table_name='scholarships', notice_type='scholarship'):
                     benefits,
                     category,
                     title,
-                    full_text
+                    full_text,
+                    fields['main_category'], fields['subcategory'], fields['eligibility_conditions'],
+                    fields['classification_status'], fields['classification_reason']
                 )
             )
+
+            save_profile(conn, stored_id, extract_profile(title, full_text, target_audience, fields['main_category'], fields['subcategory']))
 
             upsert_notice_source(
                 cursor,
                 notice_type,
-                article_no,
+                stored_id,
                 detail['source_url'],
                 title
             )
-            save_notice_attachments(cursor, notice_type, article_no, detail['attachments'])
+            if board: save_origin(conn, board, notice, stored_id, notice_type)
+            if download_files:
+                save_notice_attachments(cursor, notice_type, stored_id, detail['attachments'])
+            else:
+                for attachment in detail['attachments']:
+                    upsert_notice_attachment(cursor, notice_type, stored_id, {**attachment, 'storage_path':'', 'mime_type':None, 'file_size':None})
+            conn.commit()
 
             new_count += 1
             print(f"✅ 저장 완료: {article_no}")
 
-        except sqlite3.IntegrityError as e:
-            print(f"⚠️  IntegrityError (articleNo={article_no}): {e}")
-        except json.JSONDecodeError as e:
-            print(f"❌ JSON 파싱 오류 (articleNo={article_no}): {e}")
-            print(f"응답 내용: {full_text[:200]}...")
-        except KeyError as e:
-            print(f"❌ LLM 응답 키 누락 (articleNo={article_no}): {e}")
-            print(f"응답: {result}")
-        except Exception as e:
-            print(f"❌ 저장 오류 (articleNo={article_no}): {e}")
-            print(f"타입: {type(e).__name__}")
+        except Exception as error:
+            conn.rollback()
+            errors += 1
+            print(f"저장 실패 ({article_no}), 다음 배치에서 재시도: {error}")
 
     conn.commit()
     conn.close()
 
-    print(f"\n📥 총 {new_count}개의 새로운 공지사항이 저장되었습니다.")
+    print(f"\n저장 {new_count}개, 실패 {errors}개")
+    if errors: raise RuntimeError(f"{errors} notice(s) failed; successful notices were committed")
+    return new_count
 
 
 def main():
-    """메인 함수"""
-    print("=" * 60)
-    print("🎓 성균관대 공지사항 크롤러")
-    print("=" * 60)
-
-    print("\n" + "=" * 60)
-    print("📚 장학금/모집 공지 크롤링")
-    print("=" * 60)
-    scholarship_url = "https://www.skku.edu/skku/campus/skk_comm/notice06.do"
-    scholarship_notices = crawl_notices(scholarship_url, "장학금/모집")
-
-    print("\n" + "=" * 60)
-    print("💼 채용/취업 공고 크롤링")
-    print("=" * 60)
-    job_url = "https://www.skku.edu/skku/campus/skk_comm/notice05.do"
-    job_notices = crawl_notices(job_url, "채용/취업")
-
-    total_count = 0
-
-    if scholarship_notices:
-        print("\n📋 장학금/모집 크롤링 결과:")
-        for i, notice in enumerate(scholarship_notices, 1):
-            print(f"{i}. [{notice['article_no']}] {notice['title']}")
-        total_count += len(scholarship_notices)
-
-    if job_notices:
-        print("\n📋 채용/취업 크롤링 결과:")
-        for i, notice in enumerate(job_notices, 1):
-            print(f"{i}. [{notice['article_no']}] {notice['title']}")
-        total_count += len(job_notices)
-
-    if total_count > 0:
-        if scholarship_notices:
-            print("\n💾 장학금 데이터 저장 중...")
-            save_to_db(scholarship_notices, table_name='scholarships', notice_type='scholarship')
-
-        if job_notices:
-            print("\n💾 채용 공고 데이터 저장 중...")
-            save_to_db(job_notices, table_name='jobs', notice_type='job')
-    else:
-        print("⚠️  크롤링된 공지사항이 없습니다.")
-
-    print("\n" + "=" * 60)
-    print("✅ 크롤러 종료")
-    print("=" * 60)
+    parser = argparse.ArgumentParser(description='성균관대 본교·단과대·학과 공지 수집')
+    parser.add_argument('--source', action='append', help='수집할 출처 ID. 생략하면 활성 출처 전체')
+    parser.add_argument('--pages', type=int, help='출처별 목록 페이지 수 (기본: 설정값)')
+    parser.add_argument('--max-new', type=int, help='출처별 신규 저장 상한')
+    parser.add_argument('--dry-run', action='store_true', help='목록만 확인; DB 저장·LLM 호출 없음')
+    parser.add_argument('--no-download', action='store_true', help='첨부 링크만 저장')
+    parser.add_argument('--list-sources', action='store_true')
+    args = parser.parse_args()
+    boards = load_sources()
+    if args.list_sources:
+        for board in boards: print(f"{board['id']}\t{board['name']}\t{board['url']}")
+        return
+    if args.pages is not None and not 1 <= args.pages <= 100: parser.error('--pages: 1~100')
+    if args.max_new is not None and args.max_new < 1: parser.error('--max-new: 1 이상')
+    if args.source and set(args.source) - {b['id'] for b in boards}: parser.error('등록되지 않은 출처 ID')
+    failures = []
+    for board in boards:
+        if (args.source and board['id'] not in args.source) or (not args.source and not board['enabled']): continue
+        try:
+            notices = crawl_notices(board['url'], board['name'], args.pages or board['pages'])
+            if args.dry_run:
+                for notice in notices: print(f"[{notice['article_no']}] {notice['title']} {notice['url']}")
+            else:
+                save_to_db(notices, table_name=board['table'], notice_type='scholarship' if board['table']=='scholarships' else 'job',
+                           board=board, max_new=args.max_new, download_files=not args.no_download)
+        except Exception as error:
+            failures.append(board['id'])
+            print(f"출처 수집 실패 [{board['id']}]: {error}")
+        time.sleep(0.5)
+    if failures: raise SystemExit(f"수집 실패 출처 (나머지는 저장됨): {', '.join(failures)}")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

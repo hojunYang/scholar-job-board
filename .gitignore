@@ -51,3 +51,8 @@ env/
 ENV/
 *.egg-info/
 
+
+/data/backups/
+/work/
+
+/scripts/logs/

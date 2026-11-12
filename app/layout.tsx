@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "장학금, 채용 대시보드",
-  description: "성균관대 장학금, 채용/모집 대시보드",
+  title: "성균관대 공지",
+  description: "성균관대학교 공지 검색 및 분류별 조회",
 };
 
 export default function RootLayout({

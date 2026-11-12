@@ -1,3 +1,4 @@
+import NoticeClassification from '@/components/NoticeClassification';
 import Link from 'next/link';
 import type { Scholarship } from '@/types';
 
@@ -30,11 +31,11 @@ export default function ScholarshipList({ scholarships }: ScholarshipListProps) 
   return (
     <div className="list-container">
       {scholarships.map((scholarship) => (
-        <Link key={scholarship.id} href={`/scholarships/${scholarship.id}`} className="card">
+        <Link key={scholarship.id} href={`/${scholarship.notice_type ? (scholarship.notice_type === 'job' ? 'jobs' : 'scholarships') : 'scholarships'}/${scholarship.id}`} className="card">
           <div className="card-header">
             <div className="card-title-section">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="badge badge-category">{scholarship.category}</span>
+                <NoticeClassification {...scholarship} />
                 {scholarship.attachmentCount ? (
                   <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                     첨부 {scholarship.attachmentCount}개

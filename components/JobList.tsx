@@ -1,3 +1,4 @@
+import NoticeClassification from '@/components/NoticeClassification';
 import Link from 'next/link';
 import type { Job } from '@/types';
 
@@ -30,11 +31,11 @@ export default function JobList({ jobs }: JobListProps) {
   return (
     <div className="list-container">
       {jobs.map((job) => (
-        <Link key={job.id} href={`/jobs/${job.id}`} className="card">
+        <Link key={job.id} href={`/${job.notice_type ? (job.notice_type === 'job' ? 'jobs' : 'scholarships') : 'jobs'}/${job.id}`} className="card">
           <div className="card-header">
             <div className="card-title-section">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="badge badge-category">{job.category}</span>
+                <NoticeClassification {...job} />
                 {job.attachmentCount ? (
                   <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                     첨부 {job.attachmentCount}개

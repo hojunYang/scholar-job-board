@@ -1,0 +1,15 @@
+{
+  "장학·학비지원": ["studyLevel", "studentYear", "enrollment", "incomeTier", "gpa"],
+  "근로·알바·학생조교": ["studyLevel", "studentYear", "enrollment", "workAvailability"],
+  "취업·인턴·현장실습": ["degreeLevel", "graduationStatus", "experienceYears", "workAvailability"],
+  "연구경험·학술지원": ["studyLevel", "studentYear", "enrollment", "gpa"],
+  "실험·설문·인터뷰 참여": ["age"],
+  "교육·역량개발": ["studyLevel", "studentYear", "enrollment"],
+  "공모전·경진대회": ["applicantType", "studyLevel"],
+  "창업·사업화": ["applicantType"],
+  "봉사·멘토링·서포터즈": ["studyLevel", "studentYear", "enrollment", "age"],
+  "국제교류·해외연수": ["studyLevel", "studentYear", "enrollment", "gpa"],
+  "행사·강연·문화": ["applicantType", "studyLevel"],
+  "생활·복지·시설": ["enrollment", "age"],
+  "학사·행정": ["studyLevel", "studentYear", "enrollment"]
+}
