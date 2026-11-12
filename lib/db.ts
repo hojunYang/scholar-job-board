@@ -124,6 +124,7 @@ function initializeDatabase() {
     const addBoard = db.prepare('INSERT INTO notice_boards (id, university, college, department, name, url) VALUES (@id,@university,@college,@department,@name,@url) ON CONFLICT(id) DO UPDATE SET university=excluded.university,college=excluded.college,department=excluded.department,name=excluded.name,url=excluded.url');
     const boards = JSON.parse(readFileSync(path.join(process.cwd(), 'data', 'notice-sources.json'), 'utf8'));
     for (const board of boards) {
+      if (!board.enabled) continue;
       addBoard.run({id:board.id,university:board.university,college:board.college,department:board.department,name:board.name,url:board.url});
       if (board.legacy_ids) for (const table of board.legacy_tables || [board.table]) {
         if (!['jobs','scholarships'].includes(table)) throw new Error('Invalid legacy source table');

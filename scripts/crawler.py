@@ -67,7 +67,7 @@ def get_db_connection():
     ensure_support_tables(conn)
     with conn:
         ensure_notice_schema(conn)
-        register_sources(conn, load_sources())
+        register_sources(conn, [board for board in load_sources() if board['enabled']])
     return conn
 
 
@@ -378,6 +378,8 @@ def save_to_db(notices, table_name='scholarships', notice_type='scholarship', bo
         request_id=request_id
     )
     conn = get_db_connection()
+    if board and not board['enabled']:
+        with conn: register_sources(conn, [board])
     cursor = conn.cursor()
 
     latest_id = get_latest_article_no(table_name)
